@@ -1,0 +1,9 @@
+# Connect
+psql -U postgres -h localhost -p 5432 -d postgres
+password = 'password'
+
+# Connect to database
+\c <database name>;
+
+# Create Database
+CREATE DATABASE midwest_heritage;

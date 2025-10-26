@@ -1,0 +1,17 @@
+setup.py
+midwest_heritage/__init__.py
+midwest_heritage.egg-info/PKG-INFO
+midwest_heritage.egg-info/SOURCES.txt
+midwest_heritage.egg-info/dependency_links.txt
+midwest_heritage.egg-info/requires.txt
+midwest_heritage.egg-info/top_level.txt
+midwest_heritage/utils/__init__.py
+midwest_heritage/utils/sql_manager.py
+midwest_heritage/utils/upload_schema.py
+midwest_heritage/utils/utils.py
+midwest_heritage/working/__init__.py
+midwest_heritage/working/convert_price_list.py
+midwest_heritage/working/convert_price_list_gpt_example.py
+midwest_heritage/working/parse_headers.py
+midwest_heritage/working/sql_server_example.py
+midwest_heritage/working/temp.py
