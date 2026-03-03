@@ -12,7 +12,7 @@ import importlib
 from sqlalchemy import create_engine, text, MetaData, Table
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from parse_headers import parse_header_fields
-from midwest_heritage.utils.utils import go_up_dirs, read_config, col_to_index
+from mwh.utils.utils import go_up_dirs, read_config, col_to_index
 from datetime import datetime
 # # -----------------------------
 # # Import parse_headers

@@ -1,0 +1,14 @@
+[project]
+name = "midwest-heritage"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "dbt-core>=1.11.6",
+    "dbt-snowflake>=1.11.2",
+    "numpy>=2.4.2",
+    "pandas>=3.0.1",
+    "psycopg2>=2.9.11",
+    "snowflake-connector-python>=4.3.0",
+]

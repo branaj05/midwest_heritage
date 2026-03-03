@@ -55,4 +55,7 @@ htmlcov/
 *.bmp
 *.tiff
 
+# Directories
+dbt/
+
 
