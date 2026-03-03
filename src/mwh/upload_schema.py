@@ -1,4 +1,4 @@
-from midwest_heritage.utils.sql_manager import manager
+from mwh.utils.sql_manager import snowflake as manager
 from mwh.utils.utils import go_up_dirs
 import os
 if __name__ == "__main__":
@@ -6,7 +6,7 @@ if __name__ == "__main__":
     db = manager()
 
     # Upload/execute the given schema
-    price_list_schema_path = os.path.join(go_up_dirs(__file__, 2), 'inputs', 'price_list_schema.sql')
+    price_list_schema_path = os.path.join(go_up_dirs(__file__, 2), 'mwh', 'sql', 'snowflake', 'price_list_schema.sql')
     db.upload_schema(price_list_schema_path)
 
     # Close the database connection

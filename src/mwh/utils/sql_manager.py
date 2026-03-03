@@ -6,7 +6,8 @@ from mwh.utils.utils import go_up_dirs, read_config
 
 class manager(ABC):
     def __init__(self):
-        # establish path to .ini file and read in connectoin parameters
+        print("manager init running...")
+        # establish path to .ini file and read in connection parameters
         self.config_dir = os.path.join(go_up_dirs(__file__, 2), 'config')
         self.sql_dir = os.path.join(go_up_dirs(__file__, 2), 'sql')
         # initialize connection and cursor to None
@@ -56,7 +57,9 @@ class manager(ABC):
         return self.cur.fetchone()[0] > 0
 
 class postgres(manager):
-    # def __init__(self):
+    def __init__(self):
+        super().__init__()
+        self.config_file = os.path.join(self.config_dir, 'postgresql.ini')
 
     @property
     def _connector(self):
@@ -82,9 +85,11 @@ class postgres(manager):
         finally:
             self.close()
 
-class snowflake():
-    # def __init__(self):
-        # establish path to .ini file and read in connectoin parameters
+class snowflake(manager):
+    def __init__(self):
+        # establish path to .ini file and read in connection parameters
+        super().__init__()
+        self.config_file = os.path.join(self.config_dir, 'snowflake.ini')
     @property
     def _connector(self):
         import snowflake.connector
@@ -110,7 +115,7 @@ class snowflake():
             schema_sql = file.read()
         
         # Split into multiple statmeents
-        statements = [s.strip() for s in schema_sql.split(';') if s.strip()]
+        statements = self._clean_sql(schema_sql).split(';')
         executed = []
 
         try:
@@ -124,8 +129,11 @@ class snowflake():
             # self._compensate(executed)
             raise e
         
+    def _clean_sql(self, sql):
+        lines = sql.splitlines()
+        lines = [line for line in lines if not line.strip().startswith('--')]
+        return '\n'.join(lines)
 
-    
     # def _compensate(self, executed_statements):
     #     """ Attempt roll back by dropping created objects"""
     #     for stmt in reversed(executed_statements):

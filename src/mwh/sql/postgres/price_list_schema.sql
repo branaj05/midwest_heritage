@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS price_list.price_list(
     category1_id,
     category2_id,
     category3_id,
+    description,
     quote_date,
     price_source_id)
     
