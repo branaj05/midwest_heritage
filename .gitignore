@@ -57,5 +57,5 @@ htmlcov/
 
 # Directories
 dbt/
-
+src/mwh/logs
 

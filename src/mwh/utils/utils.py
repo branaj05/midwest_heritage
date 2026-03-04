@@ -3,6 +3,11 @@ import pandas as pd
 import numpy as np
 from configparser import ConfigParser
 
+def load_sql(filename, directory="snowflake"):
+    path = os.path.join(go_up_dirs(__file__, 2), "sql", directory, filename)
+    with open(path, 'r') as f:
+        return f.read()
+    
 def go_up_dirs(path, n):
     """Go up n directories from path."""
     for _ in range(n):

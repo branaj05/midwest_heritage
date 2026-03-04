@@ -1,0 +1,37 @@
+    MERGE INTO price_list.price_list AS target
+    USING (SELECT 
+        :category1_id AS category1_id,
+        :category2_id AS category2_id,
+        :category3_id AS category3_id,
+        :description AS description,
+        :price_source_id AS price_source_id,
+        :quote_date AS quote_date,
+        :dim_thickness AS dim_thickness,
+        :dim_width AS dim_width,
+        :dim_length AS dim_length,
+        :unit_of_measure_id AS unit_of_measure_id,
+        :price_value AS price_value,
+        :notes AS notes
+    ) AS source
+    ON  target.category1_id = source.category1_id
+    AND target.category2_id = source.category2_id
+    AND target.category3_id = source.category3_id
+    AND target.quote_date = source.quote_date
+    AND target.price_source_id IS NOT DISTINCT FROM source.price_source_id
+    WHEN MATCHED THEN UPDATE SET
+        target.description = source.description,
+        target.dim_thickness = source.dim_thickness,
+        target.dim_width = source.dim_width,
+        target.dim_length = source.dim_length,
+        target.unit_of_measure_id = source.unit_of_measure_id,
+        target.price_value = source.price_value,
+        target.notes = source.notes
+    WHEN NOT MATCHED THEN INSERT (
+        category1_id, category2_id, category3_id, description,
+        price_source_id, quote_date, dim_thickness, dim_width,
+        dim_length, unit_of_measure_id, price_value, notes
+    ) VALUES (
+        source.category1_id, source.category2_id, source.category3_id, source.description,
+        source.price_source_id, source.quote_date, source.dim_thickness, source.dim_width,
+        source.dim_length, source.unit_of_measure_id, source.price_value, source.notes
+    )
