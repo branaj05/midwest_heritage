@@ -10,112 +10,21 @@ from tqdm import tqdm
 import pandas as pd
 import os
 import importlib
-from sqlalchemy import create_engine, text, MetaData, Table
+from sqlalchemy import create_engine, engine, text, MetaData, Table
 from urllib.parse import quote_plus
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from mwh.extract.parse_headers import parse_header_fields
 from mwh.utils.utils import go_up_dirs, read_config, col_to_index, load_sql
 from datetime import datetime
 
-PRICE_LIST_MERGE = load_sql("price_list_upsert.sql")
-def reflect_tables(engine, schema="price_list"):
-    """
-    Helper: reflect_tables
+NATURAL_KEY = ["category1_id", "category2_id", "category3_id", "quote_date", "price_source_id", "description"]
+PRICE_LIST_MERGE = load_sql("price_list_merge.sql")
 
-    Uses SQLAlchemy reflection to load all tables defined in a given schema
-    (e.g., from price_list_schema.sql) into a MetaData object.
-
-    Workflow:
-        - Creates a MetaData object tied to the target schema.
-        - Calls .reflect() on the database engine, which queries system catalogs
-          to discover all tables, columns, foreign keys, and indexes.
-        - Returns the MetaData, allowing you to access tables by name through
-          md.tables["schema.table_name"].
-
-    Why:
-        This ensures the Python code always matches the actual database schema,
-        rather than re-defining tables in Python and risking mismatches.
-        It allows for easy table reference:
-         md.tables["price_list.price_list"] or md.tables["price_list.price_source"].
-    """
-    # # Define metadata object for the given schema
-    md = MetaData()
-    # call reflect to load table definitions from the database
+#%% Local Utils
+def test_connection(engine):
     with engine.connect() as conn:
-        md.reflect(bind=conn, schema=schema)
-    return md
-
-
-# TODO: Maybe generalize this to get_or_create_by_cols(conn, table, col_val_dict, id_col)
-def get_or_create(conn, table: Table, name_value: str, name_col: str, id_col: str):
-    """
-    Helper: get_or_create
-
-    Ensures a consistent foreign-key reference for lookup tables
-    (price_categories, quote_type, price_source, unit_of_measure).
-
-    Workflow:
-        - Accepts a connection, a reflected SQLAlchemy Table, a string value,
-        the column name to match on (e.g., 'name'), and the table’s ID column.
-        - Attempts to INSERT the given value into the lookup table.
-        - If the value already exists, uses PostgreSQL's ON CONFLICT to do a no-op update.
-        - Always returns the primary key ID (via RETURNING), so the calling code
-        can use it when inserting into price_list or related tables.
-
-    Why:
-        This prevents duplicate rows for things like vendors or units of measure,
-        while also saving you from writing separate SELECT-then-INSERT logic.
-        Effectively: "insert if new, else fetch the existing ID."
-    """
-    if not name_value:
-        return None
-    stmt = text(
-        f"""
-        INSERT INTO {table.fullname} ({name_col})
-        VALUES (:name)
-        ON CONFLICT ({name_col}) DO UPDATE SET {name_col}=EXCLUDED.{name_col}
-        RETURNING {id_col}
-        """
-    )
-    res = conn.execute(stmt, {"name": name_value})
-    return int(res.scalar())
-
-def get_or_create_category(conn, name_value: str, level_value: str) -> int | None:
-    """
-    Helper: get_or_create_category
-
-    Ensures a consistent foreign-key reference in price_list.price_categories
-    for a given (name, level) pair.
-
-    Args:
-        conn       : SQLAlchemy connection (inside a transaction block)
-        name_value : Category name (e.g., "Lumber", "Dimensional Lumber")
-        level_value: Category level (e.g., "1", "2", "3")
-
-    Returns:
-        The category_id (int) for the row, inserting if necessary.
-
-    Behavior:
-        • Attempts to INSERT (name, level).
-        • If a row with the same name already exists, does nothing destructive
-          but updates the level to the new value.
-        • Always returns the primary key id via RETURNING.
-    """
-    if not name_value:
-        return None
-
-    merge_stmt = text("""
-        MERGE INTO price_list.price_categories AS target
-        USING (SELECT :name AS name, :level AS level) AS source
-        ON target.name = source.name AND target.level = source.level
-        WHEN MATCHED THEN UPDATE SET target.level = source.level
-        WHEN NOT MATCHED THEN INSERT (name, level) VALUES (source.name, source.level)
-    """)
-    conn.execute(merge_stmt, {"name": name_value, "level": level_value})
-
-    id_stmt = text("SELECT category_id FROM price_list.price_categories WHERE name = :name AND level = :level")
-    return int(conn.execute(id_stmt, {"name": name_value, "level": level_value}).scalar())
-
+        result = conn.execute(text('select current_version()')).fetchone()
+        print(f"Connected to Snowflake version: {result[0]}")
+#%% Clean Data Helpers
 def squash_rows(df):
     price_cols = df.columns[10:].tolist()  # adjust index to where prices start
     df = df[df[price_cols].apply(pd.to_numeric, errors='coerce').notna().any(axis=1)]
@@ -148,6 +57,28 @@ def label_dupes(df, key_cols = ['Lvl 1 Category', 'Lvl 2 Category', 'Lvl 3 Categ
             dupes.to_csv(os.path.join(path, 'dupes.csv'))
             raise ValueError(f"Duplicate rows found based on key columns {key_cols}. Check the 'dupes_post.csv' output for details.")
     return df
+def clean_data(df):
+    df = squash_rows(df)
+    df = label_dupes(df)
+    return df
+
+def reflect_tables(engine, schema="price_list"):
+    # # Define metadata object for the given schema
+    md = MetaData()
+    # call reflect to load table definitions from the database
+    with engine.connect() as conn:
+        md.reflect(bind=conn, schema=schema)
+    return md
+
+#%% Staging Helpers
+def load_lookup(conn, table, id_col, name_col):
+    """Load entire lookup table into a dict: name -> id"""
+    result = conn.execute(text(f"SELECT {id_col}, {name_col} FROM {table.fullname}")).fetchall()
+    return {row[1]: row[0] for row in result}
+
+def load_categories(conn):
+    result = conn.execute(text("SELECT category_id, name, level FROM price_list.price_categories")).fetchall()
+    return {(row[1], row[2]): row[0] for row in result}
 # -----------------------------
 # Main ingest function
 # -----------------------------
@@ -166,7 +97,7 @@ def ingest_price_list(
     Uses parse_headers.parse_header_fields for parsing header metadata.
     """
     # Define the natural key (uniqueness definition for price_list)
-    NATURAL_KEY = ["category1_id", "category2_id", "category3_id", "quote_date", "price_source_id", "description"]
+    
     #############################################################################
     # Read Excel File and Parse for metadata 
     if isinstance(index_cols, str):
@@ -201,95 +132,162 @@ def ingest_price_list(
     #############################################################################
     # Connect to DB and reflect tables
     engine = create_engine(engine_url)
-    def test_connection(engine):
-        with engine.connect() as conn:
-            result = conn.execute(text('select current_version()')).fetchone()
-            print(f"Connected to Snowflake version: {result[0]}")
     test_connection(engine)
+    #   Reflect tables and load lookups into cache dicts (keep for now)
     md = reflect_tables(engine, schema=schema)
-
-    price_list = md.tables.get(f"{schema}.price_list")
+    # price_list = md.tables.get(f"{schema}.price_list")
     # categories = md.tables.get(f"{schema}.price_categories")
     # quote_types = md.tables.get(f"{schema}.quote_type")
     price_sources = md.tables.get(f"{schema}.price_source")
     uoms = md.tables.get(f"{schema}.unit_of_measure")
-
-    inserted = 0
-    #############################################################################
     with engine.connect() as conn:
-        trans = conn.begin()
-        for r_idx in tqdm(range(len(body)), desc="Ingesting rows"):
-            row = body.iloc[r_idx]
-            # Assume first 3 columns are Lvl 1, Lvl 2, Lvl 3 categories
-            # NOTE: Test this in operation and see if row['Lvl 1 Category'] etc. works
+        # One Trip to load lookups
+        with conn.begin():
+            category_cache = load_categories(conn)
+            source_cache = load_lookup(conn, price_sources, "price_source_id", "name")
+            uom_cache = load_lookup(conn, uoms, "unit_of_measure_id", "name")
+        #############################################################################
+        # STAGE payloads locally
+        payloads = []
+        new_categories = {}  # (name, level) -> placeholder
+        new_sources = set()
+        new_uoms = set()
+        for r_idx, row in tqdm(body.iterrows(), total=body.shape[0], desc = "Staging Data..."):
             lvl1 = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else None
             lvl2 = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else None
             lvl3 = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else None
-            description = str(row.iloc[4]).strip() if pd.notna(row.iloc[4]) else None
 
-            thickness = str(row.iloc[5]).strip() if pd.notna(row.iloc[5]) else None
-            width = str(row.iloc[6]).strip() if pd.notna(row.iloc[6]) else None
-            length = str(row.iloc[7]).strip() if pd.notna(row.iloc[7]) else None
-            lvl1_id = get_or_create_category(conn, lvl1, "1")
-            lvl2_id = get_or_create_category(conn, lvl2, "2")
-            lvl3_id = get_or_create_category(conn, lvl3, "3")
-
-
-            # for each header column, check if there's a non-empty value in the row, and if so, attempt to insert a price_list record
-            for c_idx, hm in header_metas.items():
+            # Track new categories for bulk insert later
+            for name, level in [(lvl1, "1"), (lvl2, "2"), (lvl3, "3")]:
+                if name and (name, level) not in category_cache:
+                    new_categories[(name, level)] = None  # ID to be resolved after insert
+            
+            valid_cols = [c for c in header_metas.keys() if pd.notna(row.iloc[c])]
+            for c_idx in valid_cols:
                 val = row.iloc[c_idx]
-                # Check for non-empty value
-                if pd.isna(val) or str(val).strip() == "":
-                    continue
-                # Check for valid date
+                hm = header_metas[c_idx]
                 event_date = hm.get("event_date")
                 if event_date is None:
-                    continue  # Skip rows without a valid date
-                price_source_id = get_or_create(conn, price_sources, hm.get("event_source"), "name", "price_source_id") if price_sources is not None else None
-                uom_id = get_or_create(conn, uoms, hm.get("event_unit_measure"), "name", "unit_of_measure_id") if uoms  is not None else None
+                    continue
                 if isinstance(event_date, str):
                     event_date = datetime.strptime(event_date, "%m/%d/%y").date()
 
-                payload = {
-                    "category1_id": lvl1_id,
-                    "category2_id": lvl2_id,
-                    "category3_id": lvl3_id,
-                    "description": description,
-                    "price_source_id": price_source_id,
+                source = hm.get("event_source")
+                uom = hm.get("event_unit_measure")
+                if source and source not in source_cache:
+                    new_sources.add(source)
+                if uom and uom not in uom_cache:
+                    new_uoms.add(uom)
+
+                payloads.append({
+                    "lvl1": lvl1, "lvl2": lvl2, "lvl3": lvl3,  # resolve IDs after lookup inserts
+                    "description": str(row.iloc[4]).strip() if pd.notna(row.iloc[4]) else None,
+                    "source": source,
+                    "uom": uom,
                     "quote_date": event_date,
-                    'dim_thickness': thickness,
-                    'dim_width': width,
-                    'dim_length': length,
-                    "unit_of_measure_id": uom_id,
+                    "dim_thickness": str(row.iloc[5]).strip() if pd.notna(row.iloc[5]) else None,
+                    "dim_width": str(row.iloc[6]).strip() if pd.notna(row.iloc[6]) else None,
+                    "dim_length": str(row.iloc[7]).strip() if pd.notna(row.iloc[7]) else None,
                     "price_value": float(val) if isinstance(val, (int, float)) else None,
                     "notes": None,
-                }
+                })
+        #############################################################################
+        # 'Bulk' insert any new lookup values
+        with conn.begin():
+            if new_categories:
+                conn.execute(text("INSERT INTO price_list.price_categories (name, level) VALUES (:name, :level)"),
+                            [{"name": n, "level": l} for n, l in new_categories.keys()])
+            if new_sources:
+                conn.execute(text("INSERT INTO price_list.price_source (name) VALUES (:name)"),
+                            [{"name": s} for s in new_sources])
+            if new_uoms:
+                conn.execute(text("INSERT INTO price_list.unit_of_measure (name) VALUES (:name)"),
+                            [{"name": u} for u in new_uoms])
+        
+        # Reload caches with new IDs
+        with conn.begin(): 
+            category_cache = load_categories(conn)
+            source_cache = load_lookup(conn, price_sources, "price_source_id", "name")
+            uom_cache = load_lookup(conn, uoms, "unit_of_measure_id", "name")
 
-                conn.execute(text(PRICE_LIST_MERGE), payload)
+        # Resolve FKs and build final payloads
+        final_payloads = []
+        for p in payloads:
+            final_payloads.append({
+                "category1_id": category_cache.get((p["lvl1"], "1")),
+                "category2_id": category_cache.get((p["lvl2"], "2")),
+                "category3_id": category_cache.get((p["lvl3"], "3")),
+                "description": p["description"],
+                "price_source_id": source_cache.get(p["source"]),
+                "quote_date": p["quote_date"],
+                "dim_thickness": p["dim_thickness"],
+                "dim_width": p["dim_width"],
+                "dim_length": p["dim_length"],
+                "unit_of_measure_id": uom_cache.get(p["uom"]),
+                "price_value": p["price_value"],
+                "notes": p["notes"],
+            })
 
-                # Build an INSERT for price_list
-                ins = pg_insert(price_list).values(**payload)
-
-                # Exclude natural key columns from the update set
-                update_cols = {k: ins.excluded[k] for k in payload.keys() if k not in NATURAL_KEY}
-
-                # Add ON CONFLICT clause using the natural key
-                stmt = ins.on_conflict_do_update(
-                    index_elements=NATURAL_KEY,
-                    set_=update_cols,
-                )
-
-                # Execute the upsert
-                conn.execute(stmt)
-                inserted += 1
-
-                if inserted % BATCH_SIZE == 0:
-                    print(f"Inserted/Updated {inserted} rows...")
-                    trans.commit()
-                    trans = conn.begin()
-        trans.commit()
-
-    return inserted
+    # Build dataframe from final payloads
+    df = pd.DataFrame(final_payloads)
+    # Get raw snowflake connection from SQLAlchemy engine
+    # Bulk load into a temp staging table - one round trip
+    if True:
+        print(f"df shape: {df.shape}")
+        print(df.head())
+        df.to_sql(
+            "price_list_stage",
+            con=engine,
+            schema="price_list",
+            if_exists="replace",
+            index=False
+        )
+        with engine.connect() as verify_conn:
+            count = verify_conn.execute(text("SELECT COUNT(*) FROM price_list.price_list_stage")).scalar()
+            print(f"Staging table row count after to_sql: {count}")
+    # if True:
+    #     from snowflake.connector.pandas_tools import write_pandas
+    #     write_pandas(
+    #         raw_conn,
+    #         df,
+    #         "price_list_stage",
+    #         schema="price_list",
+    #         auto_create_table=True,
+    #         overwrite=True  # ← truncates staging table before each load
+    #     )
+    # Single MERGE from staging into target
+    with engine.connect() as conn:
+        with conn.begin():
+            # conn.execute(text("""
+            #     MERGE INTO price_list.price_list AS target
+            #     USING price_list.price_list_stage AS source
+            #     ON  target.category1_id = source.category1_id
+            #     AND target.category2_id = source.category2_id
+            #     AND target.category3_id = source.category3_id
+            #     AND target.quote_date = source.quote_date
+            #     AND target.description = source.description
+            #     AND EQUAL_NULL(target.price_source_id, source.price_source_id)
+            #     WHEN MATCHED THEN UPDATE SET
+            #         target.dim_thickness = source.dim_thickness,
+            #         target.dim_width = source.dim_width,
+            #         target.dim_length = source.dim_length,
+            #         target.unit_of_measure_id = source.unit_of_measure_id,
+            #         target.price_value = source.price_value,
+            #         target.notes = source.notes
+            #     WHEN NOT MATCHED THEN INSERT (
+            #         category1_id, category2_id, category3_id, description,
+            #         price_source_id, quote_date, dim_thickness, dim_width,
+            #         dim_length, unit_of_measure_id, price_value, notes
+            #     ) VALUES (
+            #         source.category1_id, source.category2_id, source.category3_id, source.description,
+            #         source.price_source_id, source.quote_date, source.dim_thickness, source.dim_width,
+            #         source.dim_length, source.unit_of_measure_id, source.price_value, source.notes
+            #     )
+            # """))
+            conn.execute(text(PRICE_LIST_MERGE))
+    with engine.connect() as verify_conn:
+        count = verify_conn.execute(text("SELECT COUNT(*) FROM price_list.price_list")).scalar()
+        print(f"Target table row count after MERGE: {count}")
 
 if __name__ == "__main__":
     import os
@@ -313,11 +311,9 @@ if __name__ == "__main__":
     )
 
     # Run the ingest
-    inserted = ingest_price_list(
+    ingest_price_list(
         path, 
         sheet_name="Price_List", 
         engine_url=ENGINE, 
         header_row=18, 
         index_cols='ab')
-    print(f"Successfully ingested {inserted} rows.")
-    # TODO: ADD the rest of the fields for the price list table and get this working. 

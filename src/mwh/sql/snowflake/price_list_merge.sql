@@ -1,18 +1,5 @@
     MERGE INTO price_list.price_list AS target
-    USING (SELECT 
-        :category1_id AS category1_id,
-        :category2_id AS category2_id,
-        :category3_id AS category3_id,
-        :description AS description,
-        :price_source_id AS price_source_id,
-        :quote_date AS quote_date,
-        :dim_thickness AS dim_thickness,
-        :dim_width AS dim_width,
-        :dim_length AS dim_length,
-        :unit_of_measure_id AS unit_of_measure_id,
-        :price_value AS price_value,
-        :notes AS notes
-    ) AS source
+    USING price_list.price_list_stage AS source
     ON  target.category1_id = source.category1_id
     AND target.category2_id = source.category2_id
     AND target.category3_id = source.category3_id
@@ -35,4 +22,3 @@
         source.price_source_id, source.quote_date, source.dim_thickness, source.dim_width,
         source.dim_length, source.unit_of_measure_id, source.price_value, source.notes
     )
-
