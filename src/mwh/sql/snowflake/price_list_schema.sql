@@ -40,8 +40,6 @@ CREATE TABLE IF NOT EXISTS price_list.price_list(
 
     description TEXT,
 
-    -- quote_type_id INT 
-    --     REFERENCES price_list.quote_type(quote_type_id),
     price_source_id INT 
         REFERENCES price_list.price_source(price_source_id),
 
@@ -57,15 +55,16 @@ CREATE TABLE IF NOT EXISTS price_list.price_list(
     price_value DECIMAL(12,2) NOT NULL,
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
     CONSTRAINT price_list_natural_key UNIQUE (
     category1_id,
     category2_id,
     category3_id,
     description,
     quote_date,
-    price_source_id)
-    
+    price_source_id, 
+    unit_of_measure_id
 );
 
 

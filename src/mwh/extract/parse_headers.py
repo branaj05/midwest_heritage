@@ -85,14 +85,17 @@ def parse_header_combo(parser1, parser2, s):
 # ---------- 3) Unified field extractor ----------
 def parse_header_fields(header: str):
     h = (header or "").strip()
+    vendor   = parse_vendor(h)
+    doc_type = parse_doc_type(h)
+    if vendor and doc_type:
+        event_source = f"{vendor} {doc_type}"
+    else:
+        event_source = vendor or doc_type
     return {
-        "event_source":     parse_header_combo(parse_vendor, parse_doc_type, h),
-        # "vendor":     parse_vendor(h),
-        "event_date": parse_date_any(h),
-        # "doc_type":   parse_doc_type(h),
-        "event_unit_measure":     parse_metric(h),
-        # "categories": parse_categories(h),
-        "raw_header": h,
+        "event_source":       event_source,
+        "event_date":         parse_date_any(h),
+        "event_unit_measure": parse_metric(h),
+        "raw_header":         h,
     }
 
 # ---------- 4) Examples ----------

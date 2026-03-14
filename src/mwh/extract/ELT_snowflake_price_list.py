@@ -16,7 +16,7 @@ from mwh.extract.parse_headers import parse_header_fields
 from mwh.utils.utils import go_up_dirs, read_config, col_to_index, load_sql
 from datetime import datetime
 
-NATURAL_KEY = ["category1_id", "category2_id", "category3_id", "quote_date", "price_source_id", "description"]
+NATURAL_KEY = ["category1_id", "category2_id", "category3_id", "quote_date", "price_source_id", "description", "unit_of_measure_id"]
 PRICE_LIST_MERGE = load_sql("price_list_merge.sql")
 
 #%% Local Utils
@@ -228,24 +228,47 @@ def ingest_price_list(
                 "notes": p["notes"],
             })
 
+        # Invert caches for readable dupe output (id -> name)
+        inv_category = {v: k[0] for k, v in category_cache.items()}
+        inv_source   = {v: k for k, v in source_cache.items()}
+        inv_uom      = {v: k for k, v in uom_cache.items()}
+
     # Build dataframe from final payloads
     df = pd.DataFrame(final_payloads)
-    # Get raw snowflake connection from SQLAlchemy engine
-    # Bulk load into a temp staging table - one round trip
-    if True:
-        print(f"df shape: {df.shape}")
-        print(df.head())
-        df.to_sql(
-            "price_list_stage",
-            con=engine,
-            schema="price_list",
-            if_exists="replace",
-            index=False
+
+    # Enforce natural key uniqueness before staging (Snowflake does not enforce UNIQUE constraints)
+    dupes_mask = df.duplicated(subset=NATURAL_KEY, keep=False)
+    if dupes_mask.any():
+        dupe_path = os.path.join(go_up_dirs(__file__, 2), "logs", "dupes_long.csv")
+        os.makedirs(os.path.dirname(dupe_path), exist_ok=True)
+        dupes = df[dupes_mask].copy()
+        dupes.insert(0, "category1",    dupes["category1_id"].map(inv_category))
+        dupes.insert(1, "category2",    dupes["category2_id"].map(inv_category))
+        dupes.insert(2, "category3",    dupes["category3_id"].map(inv_category))
+        dupes.insert(5+3, "price_source", dupes["price_source_id"].map(inv_source))
+        dupes.insert(7+6, "uom",          dupes["unit_of_measure_id"].map(inv_uom))
+        dupes.sort_values(NATURAL_KEY).to_csv(dupe_path, index=False)
+        raise ValueError(
+            f"{dupes_mask.sum()} rows share a duplicate natural key. "
+            f"Inspect: {dupe_path}"
         )
-        with engine.connect() as verify_conn:
-            count = verify_conn.execute(text("SELECT COUNT(*) FROM price_list.price_list_stage")).scalar()
-            print(f"Staging table row count after to_sql: {count}")
+
+    # Bulk load into a temp staging table - one round trip
+    print(f"df shape: {df.shape}")
+    print(df.head())
+    df.to_sql(
+        "price_list_stage",
+        con=engine,
+        schema="price_list",
+        if_exists="replace",
+        index=False
+    )
+    with engine.connect() as verify_conn:
+        count = verify_conn.execute(text("SELECT COUNT(*) FROM price_list.price_list_stage")).scalar()
+        print(f"Staging table row count after to_sql: {count}")
+
     # if True:
+    # If using this block, define raw_conn; Get raw snowflake connection from SQLAlchemy engine
     #     from snowflake.connector.pandas_tools import write_pandas
     #     write_pandas(
     #         raw_conn,
@@ -255,35 +278,10 @@ def ingest_price_list(
     #         auto_create_table=True,
     #         overwrite=True  # ← truncates staging table before each load
     #     )
+
     # Single MERGE from staging into target
     with engine.connect() as conn:
         with conn.begin():
-            # conn.execute(text("""
-            #     MERGE INTO price_list.price_list AS target
-            #     USING price_list.price_list_stage AS source
-            #     ON  target.category1_id = source.category1_id
-            #     AND target.category2_id = source.category2_id
-            #     AND target.category3_id = source.category3_id
-            #     AND target.quote_date = source.quote_date
-            #     AND target.description = source.description
-            #     AND EQUAL_NULL(target.price_source_id, source.price_source_id)
-            #     WHEN MATCHED THEN UPDATE SET
-            #         target.dim_thickness = source.dim_thickness,
-            #         target.dim_width = source.dim_width,
-            #         target.dim_length = source.dim_length,
-            #         target.unit_of_measure_id = source.unit_of_measure_id,
-            #         target.price_value = source.price_value,
-            #         target.notes = source.notes
-            #     WHEN NOT MATCHED THEN INSERT (
-            #         category1_id, category2_id, category3_id, description,
-            #         price_source_id, quote_date, dim_thickness, dim_width,
-            #         dim_length, unit_of_measure_id, price_value, notes
-            #     ) VALUES (
-            #         source.category1_id, source.category2_id, source.category3_id, source.description,
-            #         source.price_source_id, source.quote_date, source.dim_thickness, source.dim_width,
-            #         source.dim_length, source.unit_of_measure_id, source.price_value, source.notes
-            #     )
-            # """))
             conn.execute(text(PRICE_LIST_MERGE))
     with engine.connect() as verify_conn:
         count = verify_conn.execute(text("SELECT COUNT(*) FROM price_list.price_list")).scalar()

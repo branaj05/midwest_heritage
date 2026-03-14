@@ -11,7 +11,7 @@ import os
 import importlib
 from sqlalchemy import create_engine, text, MetaData, Table
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from mwh.parse_headers import parse_header_fields
+from mwh.extract.parse_headers import parse_header_fields
 from mwh.utils.utils import go_up_dirs, read_config, col_to_index
 from datetime import datetime
 # # -----------------------------

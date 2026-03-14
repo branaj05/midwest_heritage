@@ -8,7 +8,7 @@ class manager(ABC):
     def __init__(self):
         print("manager init running...")
         # establish path to .ini file and read in connection parameters
-        self.config_dir = os.path.join(go_up_dirs(__file__, 2), 'config')
+        self.config_dir = os.path.join(go_up_dirs(__file__, 2), 'configs')
         self.sql_dir = os.path.join(go_up_dirs(__file__, 2), 'sql')
         # initialize connection and cursor to None
         self.conn = None
