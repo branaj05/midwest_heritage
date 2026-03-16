@@ -48,7 +48,6 @@ htmlcov/
 .ipynb_checkpoints
 
 # Images
-*.png
 *.jpg
 *.jpeg
 *.gif
