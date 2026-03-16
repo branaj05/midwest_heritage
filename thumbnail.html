@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Midwest Heritage Thumbnail</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 1200px;
+      height: 628px;
+      font-family: 'Inter', sans-serif;
+      background: #0f1117;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .card {
+      width: 1200px;
+      height: 628px;
+      background: linear-gradient(135deg, #0f1117 0%, #1a1f2e 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Background grid */
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(99,179,237,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99,179,237,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Glow blob */
+    .glow {
+      position: absolute;
+      width: 600px;
+      height: 300px;
+      background: radial-gradient(ellipse, rgba(99,179,237,0.08) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .top-label {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #63b3ed;
+      margin-bottom: 18px;
+      position: relative;
+    }
+
+    .title {
+      font-size: 52px;
+      font-weight: 800;
+      color: #f0f4f8;
+      text-align: center;
+      line-height: 1.1;
+      margin-bottom: 12px;
+      position: relative;
+    }
+
+    .title span {
+      color: #63b3ed;
+    }
+
+    .subtitle {
+      font-size: 17px;
+      font-weight: 400;
+      color: #718096;
+      text-align: center;
+      margin-bottom: 48px;
+      position: relative;
+    }
+
+    /* Pipeline flow */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      position: relative;
+    }
+
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .step-box {
+      background: #1e2535;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 14px 22px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      min-width: 120px;
+      transition: border-color 0.2s;
+    }
+
+    .step-box.highlight {
+      border-color: #63b3ed;
+      background: #1a2640;
+      box-shadow: 0 0 20px rgba(99,179,237,0.15);
+    }
+
+    .step-icon {
+      font-size: 24px;
+    }
+
+    .step-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #a0aec0;
+      text-align: center;
+      line-height: 1.3;
+    }
+
+    .step-box.highlight .step-label {
+      color: #63b3ed;
+    }
+
+    .arrow {
+      font-size: 20px;
+      color: #2d3748;
+      margin: 0 6px;
+      padding-bottom: 20px;
+    }
+
+    /* Tags */
+    .tags {
+      display: flex;
+      gap: 10px;
+      margin-top: 36px;
+      position: relative;
+    }
+
+    .tag {
+      background: #1e2535;
+      border: 1px solid #2d3748;
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #718096;
+      letter-spacing: 0.5px;
+    }
+
+    .tag.blue {
+      border-color: #2b4a6f;
+      color: #63b3ed;
+      background: #152032;
+    }
+
+    /* Corner accent */
+    .corner {
+      position: absolute;
+      bottom: 30px;
+      right: 40px;
+      font-size: 12px;
+      color: #2d3748;
+      font-weight: 600;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="glow"></div>
+
+    <div class="top-label">Freelance Project</div>
+
+    <div class="title">Midwest Heritage<br><span>ELT Pipeline</span></div>
+    <div class="subtitle">Excel → Snowflake · End-to-End Data Engineering</div>
+
+    <div class="pipeline">
+      <div class="step">
+        <div class="step-box">
+          <div class="step-icon">📊</div>
+          <div class="step-label">Raw Excel<br>Pricing Data</div>
+        </div>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="step">
+        <div class="step-box">
+          <div class="step-icon">🔍</div>
+          <div class="step-label">Regex<br>Parsing</div>
+        </div>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="step">
+        <div class="step-box highlight">
+          <div class="step-icon">🗂️</div>
+          <div class="step-label">Normalize<br>& Stage</div>
+        </div>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="step">
+        <div class="step-box highlight">
+          <div class="step-icon">❄️</div>
+          <div class="step-label">Snowflake<br>Load</div>
+        </div>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="step">
+        <div class="step-box">
+          <div class="step-icon">📐</div>
+          <div class="step-label">dbt<br>Models</div>
+        </div>
+      </div>
+
+      <div class="arrow">→</div>
+
+      <div class="step">
+        <div class="step-box">
+          <div class="step-icon">📈</div>
+          <div class="step-label">Analytics<br>Layer</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tags">
+      <div class="tag blue">Python</div>
+      <div class="tag blue">Snowflake</div>
+      <div class="tag blue">dbt</div>
+      <div class="tag">SQL</div>
+      <div class="tag">Regex Parsing</div>
+      <div class="tag">Data Modeling</div>
+    </div>
+
+    <div class="corner">Austin B. · 2025</div>
+  </div>
+</body>
+</html>
